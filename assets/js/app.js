@@ -97,10 +97,13 @@
       'how.s4.t': 'ادفع شهرياً', 'how.s4.b': 'تسدّد لنا على أقساط شهرية ميسّرة طوال مدة العقد.',
 
       'calc.kicker': 'شفافية مطلقة', 'calc.title': 'اعرف قسطك الشهري فوراً',
-      'calc.sub': 'لا تكاليف خفية ولا مفاجآت. حرّك المؤشّر لترى بالضبط ما ستدفعه كل شهر.',
+      'calc.sub': 'لا تكاليف خفية ولا مفاجآت. حرّك المؤشّر لترى بالضبط ما ستدفعه أولاً وكل شهر بعدها.',
       'calc.p1': 'رسوم خدمة واضحة وشاملة للضريبة', 'calc.p2': 'تعرف الإجمالي قبل أن تبدأ', 'calc.p3': 'دون الحاجة لتحميل أي تطبيق',
       'calc.annual': 'الإيجار السنوي (ريال)', 'calc.months': 'عدد الأقساط', 'calc.monthly': 'قسطك الشهري',
-      'calc.fee': 'رسوم الخدمة (شاملة الضريبة)', 'calc.total': 'الإجمالي المستحق',
+      // Two instalment figures, because the fee is collected with the first one.
+      'calc.first': 'دفعتك الأولى', 'calc.then': 'ثم كل شهر',
+      'calc.fee': 'تكلفة التقسيط (شاملة الضريبة)', 'calc.total': 'الإجمالي المستحق',
+      'calc.offline': 'تعذّر تحميل قائمة الأسعار الآن. جرّب مرة أخرى بعد قليل.',
       'calc.disclaimer': 'قيمة تقديرية فقط وتخضع للأهلية والموافقة النهائية. الرسوم النهائية تُعرض قبل توقيع العقد.',
 
       'why.kicker': 'لماذا سبليت', 'why.title': 'مصمّمون لهدف واحد: إيجارك',
@@ -229,10 +232,12 @@
       'how.s4.t': 'Pay monthly', 'how.s4.b': 'Repay us in easy monthly installments throughout your lease.',
 
       'calc.kicker': 'Transparent by design', 'calc.title': 'See your monthly payment instantly',
-      'calc.sub': "No hidden costs, no surprises. Move the slider to see exactly what you'll pay each month.",
+      'calc.sub': "No hidden costs, no surprises. Move the slider to see exactly what you pay first, and every month after that.",
       'calc.p1': 'Clear service fee, VAT included', 'calc.p2': 'Know the total before you start', 'calc.p3': 'No app download required',
       'calc.annual': 'Annual rent (SAR)', 'calc.months': 'Number of installments', 'calc.monthly': 'Your monthly payment',
-      'calc.fee': 'Service fee (incl. VAT)', 'calc.total': 'Total payable',
+      'calc.first': 'Your first payment', 'calc.then': 'Then every month',
+      'calc.fee': 'Cost of paying monthly (incl. VAT)', 'calc.total': 'Total payable',
+      'calc.offline': 'The rate card could not be loaded just now. Please try again shortly.',
       'calc.disclaimer': 'Indicative only and subject to eligibility and final approval. Final fees are shown before you sign.',
 
       'why.kicker': 'Why Split', 'why.title': 'Built around one thing: your rent',
@@ -304,34 +309,147 @@
   }
 
   /* ---------------- Calculator ---------------- */
-  var FEE_RATE = 0.05; // indicative flat service fee (incl. VAT) — see disclaimer
+  /*
+   * THE PRICE COMES FROM THE ENGINE, NOT FROM A CONSTANT IN THIS FILE.
+   *
+   * This block used to be:
+   *
+   *     var FEE_RATE = 0.05;
+   *     var fee = annual * FEE_RATE;
+   *     var monthly = (annual + fee) / months;
+   *
+   * Three things were wrong with it, all on the section headed "no hidden
+   * costs". The rate was 5% when the engine charges 7.39%. It ignored VAT and
+   * the Ejar registration fee, so the "total payable" was short. And it
+   * AMORTISED a fee Split collects entirely with instalment 1 — on a 60,000 SAR
+   * rent it advertised 5,250 a month against a real first payment of 10,388.
+   *
+   * Everything below now renders `GET /pricing/quote`, the same endpoint the
+   * product's own calculator uses, so the marketing page and the app cannot
+   * quote different prices. When the endpoint cannot be reached the figures are
+   * HIDDEN and a message takes their place: a stale number that looks live is
+   * how the old ones survived this long.
+   *
+   * The API base is read from `<meta name="split-api-base">` so a static deploy
+   * can point at whichever environment serves it, defaulting to same-origin.
+   */
+  var API_BASE = (function () {
+    var meta = document.querySelector('meta[name="split-api-base"]');
+    var base = (meta && meta.getAttribute('content')) || '/api/v1';
+    return base.replace(/\/+$/, '');
+  })();
+
   var rentRange = document.getElementById('rentRange');
-  var monthsRange = document.getElementById('monthsRange');
+  var monthsChoice = document.getElementById('monthsChoice');
   var rentOut = document.getElementById('rentOut');
   var monthsOut = document.getElementById('monthsOut');
+  var resFirst = document.getElementById('resFirst');
   var resMonthly = document.getElementById('resMonthly');
   var resFee = document.getElementById('resFee');
   var resTotal = document.getElementById('resTotal');
+  var calcOffline = document.getElementById('calcOffline');
+  var calcResult = document.querySelector('.calc-result');
+
+  var selectedMonths = 12;
+  var quoteSeq = 0;
 
   function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
   function setLeadNum(el, val) { if (el && el.firstChild) el.firstChild.nodeValue = val + ' '; }
 
+  /** Show the figures, or the "could not load" line — never both. */
+  function setFiguresVisible(visible) {
+    if (calcOffline) calcOffline.hidden = visible;
+    if (!calcResult) return;
+    var blocks = calcResult.querySelectorAll('.calc-monthly, .calc-break');
+    for (var i = 0; i < blocks.length; i++) blocks[i].hidden = !visible;
+  }
+
+  /** Build the term buttons from whatever the rate card offers. */
+  function renderTerms(terms) {
+    if (!monthsChoice) return;
+    monthsChoice.innerHTML = '';
+    terms.forEach(function (months) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'calc-term';
+      btn.setAttribute('role', 'radio');
+      btn.textContent = months;
+      btn.setAttribute('aria-checked', months === selectedMonths ? 'true' : 'false');
+      btn.addEventListener('click', function () {
+        selectedMonths = months;
+        var all = monthsChoice.querySelectorAll('.calc-term');
+        for (var i = 0; i < all.length; i++) {
+          all[i].setAttribute('aria-checked', all[i] === btn ? 'true' : 'false');
+        }
+        if (monthsOut) monthsOut.textContent = months;
+        updateCalc();
+      });
+      monthsChoice.appendChild(btn);
+    });
+    if (monthsOut) monthsOut.textContent = selectedMonths;
+  }
+
   function updateCalc() {
     if (!rentRange) return;
     var annual = +rentRange.value;
-    var months = +monthsRange.value;
-    var fee = annual * FEE_RATE;
-    var total = annual + fee;
-    var monthly = total / months;
     if (rentOut) rentOut.textContent = fmt(annual);
-    if (monthsOut) monthsOut.textContent = months;
-    if (resMonthly) resMonthly.textContent = fmt(monthly);
-    setLeadNum(resFee, fmt(fee));
-    setLeadNum(resTotal, fmt(total));
+
+    // Sequence guard: the slider fires far faster than the round trip, and an
+    // older quote landing last would paint the previous rent's numbers.
+    var seq = ++quoteSeq;
+    fetch(API_BASE + '/pricing/quote?annualRent=' + annual)
+      .then(function (r) { if (!r.ok) throw new Error('quote ' + r.status); return r.json(); })
+      .then(function (quote) {
+        if (seq !== quoteSeq) return;
+        var terms = quote.terms || [];
+        var term = null;
+        for (var i = 0; i < terms.length; i++) {
+          if (terms[i].months === selectedMonths) { term = terms[i]; break; }
+        }
+        if (!term) term = terms[terms.length - 1];
+        if (!term) throw new Error('no terms');
+        setFiguresVisible(true);
+        if (resFirst) resFirst.textContent = fmt(term.firstInstalment);
+        setLeadNum(resMonthly, fmt(term.subsequentInstalment));
+        setLeadNum(resFee, fmt(term.costOfSplitting));
+        setLeadNum(resTotal, fmt(term.totalPayable));
+      })
+      .catch(function () {
+        if (seq !== quoteSeq) return;
+        setFiguresVisible(false);
+      });
   }
 
-  if (rentRange) rentRange.addEventListener('input', updateCalc);
-  if (monthsRange) monthsRange.addEventListener('input', updateCalc);
+  if (rentRange) {
+    rentRange.addEventListener('input', updateCalc);
+    // The band and the offered terms are the engine's, not this file's.
+    fetch(API_BASE + '/pricing')
+      .then(function (r) { if (!r.ok) throw new Error('card ' + r.status); return r.json(); })
+      .then(function (card) {
+        var terms = (card.offeredTerms || []).slice().sort(function (a, b) { return a - b; });
+        if (terms.length) {
+          if (terms.indexOf(selectedMonths) === -1) selectedMonths = terms[terms.length - 1];
+          renderTerms(terms);
+        }
+        if (card.minAnnualRent) {
+          rentRange.min = card.minAnnualRent;
+          var lo = document.querySelector('.range-ends span:first-child');
+          if (lo) lo.textContent = fmt(card.minAnnualRent);
+        }
+        if (card.maxAnnualRent) {
+          rentRange.max = card.maxAnnualRent;
+          var hi = document.querySelector('.range-ends span:last-child');
+          if (hi) hi.textContent = fmt(card.maxAnnualRent);
+        }
+        if (+rentRange.value < +rentRange.min) rentRange.value = rentRange.min;
+        if (+rentRange.value > +rentRange.max) rentRange.value = rentRange.max;
+        updateCalc();
+      })
+      .catch(function () {
+        renderTerms([6, 12]);
+        updateCalc();
+      });
+  }
 
   /* ---------------- Header shadow on scroll ---------------- */
   var header = document.getElementById('siteHeader');

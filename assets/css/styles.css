@@ -279,6 +279,18 @@ input[type="range"]::-moz-range-thumb { width: 22px; height: 22px; border-radius
 .calc-break b { color: var(--ink); }
 .calc-break .cur { font-size: .7em; color: var(--muted); font-weight: 600; }
 .calc-disclaimer { font-size: .82rem; color: var(--muted-2); }
+/* The term picker replaced a 3..12 slider that advertised seven terms nobody
+   can be given. Two real choices are buttons, not a continuous control. */
+.calc-label { display: block; font-weight: 700; color: var(--ink-3); margin-block-end: 6px; }
+.calc-terms { display: flex; gap: 10px; flex-wrap: wrap; }
+.calc-term {
+  min-width: 64px; padding: 10px 18px; border-radius: 999px; cursor: pointer;
+  border: 1.5px solid var(--line); background: var(--white); color: var(--ink);
+  font: inherit; font-weight: 700; line-height: 1;
+}
+.calc-term[aria-checked='true'] { border-color: var(--orange); background: rgba(218,112,40,.1); color: var(--orange); }
+.calc-term:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.calc-offline { color: var(--muted); font-size: .95rem; margin: 0; }
 
 /* ---------- Why cards ---------- */
 .card--why .why-ic { width: 56px; height: 56px; border-radius: 16px; background: var(--ink); display: grid; place-items: center; margin-block-end: 18px; }

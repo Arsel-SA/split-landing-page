@@ -4,6 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#262625" />
+  <!-- Where the calculator gets its prices. The page is static, so the API base
+       is configuration rather than a build flag: point it at the environment
+       that serves this deploy. Same-origin `/api/v1` is the default, which is
+       correct when the site sits behind the same proxy as the API. -->
+  <meta name="split-api-base" content="/api/v1" />
   <title>سبليت | استأجر الآن، وادفع لاحقاً — Split</title>
   <meta name="description" data-i18n-attr="content" data-i18n="meta.desc"
         content="سبليت منصة عقارية سعودية تتيح لك تقسيم إيجارك السنوي إلى دفعات شهرية ميسّرة، بينما يحصل المالك على إيجار السنة كاملاً مقدماً." />
@@ -249,21 +254,35 @@
           </div>
 
           <div class="calc-field">
-            <label for="monthsRange" data-i18n="calc.months">عدد الأقساط</label>
+            <span class="calc-label" id="monthsLabel" data-i18n="calc.months">عدد الأقساط</span>
+            <!-- 6 and 12: the terms the engine actually offers (`UW_OFFERED_TERMS`).
+                 A 3..12 slider advertised nine terms, seven of which no tenant
+                 can be given. The list is refreshed from the rate card at load. -->
             <output id="monthsOut" class="calc-out">12</output>
-            <input type="range" id="monthsRange" min="3" max="12" step="1" value="12" />
-            <div class="range-ends"><span>3</span><span>12</span></div>
+            <div class="calc-terms" id="monthsChoice" role="radiogroup" aria-labelledby="monthsLabel"></div>
           </div>
 
+          <!-- FOUR figures, because Split collects the whole fee bundle with
+               instalment 1. This block used to lead with `total / months` alone,
+               which on a 60,000 SAR rent advertised 5,250 a month against a real
+               first payment of 10,388 — on the section headed "no hidden costs".
+               Every number here now comes from `GET /pricing/quote`; see app.js. -->
           <div class="calc-result">
             <div class="calc-monthly">
-              <span class="cr-label" data-i18n="calc.monthly">قسطك الشهري</span>
-              <span class="cr-amount"><span id="resMonthly">5,250</span> <span class="cur" data-i18n="sar">ريال</span></span>
+              <span class="cr-label" data-i18n="calc.first">دفعتك الأولى</span>
+              <span class="cr-amount"><span id="resFirst">10,388</span> <span class="cur" data-i18n="sar">ريال</span></span>
             </div>
             <div class="calc-break">
-              <div><span data-i18n="calc.fee">رسوم الخدمة (شاملة الضريبة)</span><b id="resFee">3,000 <span class="cur" data-i18n="sar">ريال</span></b></div>
-              <div><span data-i18n="calc.total">الإجمالي المستحق</span><b id="resTotal">63,000 <span class="cur" data-i18n="sar">ريال</span></b></div>
+              <div><span data-i18n="calc.then">ثم كل شهر</span><b id="resMonthly">5,000 <span class="cur" data-i18n="sar">ريال</span></b></div>
+              <div><span data-i18n="calc.fee">تكلفة التقسيط (شاملة الضريبة)</span><b id="resFee">5,388 <span class="cur" data-i18n="sar">ريال</span></b></div>
+              <div><span data-i18n="calc.total">الإجمالي المستحق</span><b id="resTotal">65,388 <span class="cur" data-i18n="sar">ريال</span></b></div>
             </div>
+            <!-- Shown only when the rate card cannot be reached. Numbers are
+                 hidden rather than guessed: a stale hard-coded rate is how the
+                 old figures got there. -->
+            <p class="calc-offline" id="calcOffline" hidden data-i18n="calc.offline">
+              تعذّر تحميل قائمة الأسعار الآن. جرّب مرة أخرى بعد قليل.
+            </p>
           </div>
           <p class="calc-disclaimer" data-i18n="calc.disclaimer">قيمة تقديرية فقط وتخضع للأهلية والموافقة النهائية. الرسوم النهائية تُعرض قبل توقيع العقد.</p>
         </div>
