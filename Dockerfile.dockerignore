@@ -1,0 +1,41 @@
+# Build-context filter for apps/marketing/Dockerfile.
+#
+# The root .dockerignore excludes `apps` outright (it is written for the API image).
+# BuildKit prefers this file when building with -f apps/marketing/Dockerfile, so it
+# has to re-admit apps/marketing. Set DOCKER_BUILDKIT=1 or the build fails at COPY.
+#
+# This image needs exactly two paths: apps/marketing and docker/static-server.mjs.
+# Everything else is excluded, which keeps the context at a few hundred kB instead of
+# shipping the whole monorepo to the daemon.
+
+**/node_modules
+**/dist
+**/.angular
+**/.turbo
+.git
+**/*.log
+**/.env
+**/.env.*
+
+packages
+services
+apps/customer-web
+apps/admin-web
+apps/owner-web
+apps/customer-mobile
+docs
+design
+Logos
+Presantation
+.claude
+.github
+/*.zip
+/*.jpg
+/*.jpeg
+/*.png
+/*.html
+/pnpm-lock.yaml
+netlify.toml
+
+# The site's own version-control and editor droppings.
+apps/marketing/.git
