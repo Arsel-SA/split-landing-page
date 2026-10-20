@@ -1,0 +1,31 @@
+# split.com.sa is served from the Split platform's server (Huawei Cloud), not from
+# GitHub Pages. This site is built into the `split-marketing` image by
+# Arsel-SA/split-platform's Deploy workflow — so a push here just starts that.
+#
+# SECRET: SPLIT_GITHUB_TOKEN — the same fine-grained token split-platform uses
+# (Actions: read and write on split-platform). See split-platform's DEPLOY.md §3b.
+
+name: Deploy split.com.sa
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  deploy:
+    name: Start split-platform's Deploy workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.SPLIT_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice title=Deploy skipped::SPLIT_GITHUB_TOKEN is not set (split-platform DEPLOY.md §3b)."
+            exit 0
+          fi
+          gh workflow run deploy.yml --repo Arsel-SA/split-platform --ref main
+          echo "Started: https://github.com/Arsel-SA/split-platform/actions/workflows/deploy.yml" >> "$GITHUB_STEP_SUMMARY"
